@@ -329,7 +329,7 @@ mod test {
     }
 
     #[test]
-    fn trans_header_edate_ok() {
+    fn parse_transaction_with_edate() {
         assert_eq!(
             transaction_header("2020-11-30=2020-12-14 * Withdraw"),
             Ok((
@@ -347,7 +347,7 @@ mod test {
     }
 
     #[test]
-    fn trans_header_code_ok() {
+    fn parse_transaction_with_code() {
         assert_eq!(
             transaction_header("2020-11-30 * (#100) Withdraw"),
             Ok((
@@ -359,6 +359,24 @@ mod test {
                     code: Some("#100"),
                     description: "Withdraw",
                     comment: None,
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_transaction_with_full_options() {
+        assert_eq!(
+            transaction_header("2020-11-30=2020-12-11 * (#100) Withdraw ; modified\n    Assets"),
+            Ok((
+                "    Assets",
+                RawTransaction {
+                    date: RawDate::from_ymd("2020", "11", "30"),
+                    edate: Some(RawDate::from_ymd("2020", "12", "11")),
+                    status: Status::Cleared,
+                    code: Some("#100"),
+                    description: "Withdraw ",
+                    comment: Some("modified"),
                 }
             ))
         );
