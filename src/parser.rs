@@ -202,6 +202,9 @@ fn is_unit_char(c: char) -> bool {
         !".,;:?!-+*/^&|=<>[](){}@".contains(c)
 }
 
+/// Parses a commodity unit
+/// 
+/// TODO: support quoted units
 fn unit(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| is_unit_char(c))(input)
 }
@@ -241,23 +244,6 @@ pub fn posting(input: &str) -> IResult<&str, RawPosting> {
             comment: comment,
         }
     )(input)
-}
-
-pub fn is_transaction_header(input: &str) -> bool {
-    match input.chars().nth(0) {
-        Some(c) if c.is_ascii_digit() => true,
-        _ => false,
-    }
-}
-
-pub fn is_posting(input: &str) -> bool {
-    let result = tuple::<_, _, (), _>((space1, none_of(";")))(input);
-    result.is_ok()
-}
-
-pub fn is_posting_comment(input: &str) -> bool {
-    let result = tuple::<_, _, (), _>((space1, one_of(";")))(input);
-    result.is_ok()
 }
 
 #[cfg(test)]
@@ -513,20 +499,5 @@ mod test {
                 }
             ))
         );
-    }
-
-    #[test]
-    fn predicates() {
-        assert_eq!(is_transaction_header("2020-10-05 * Withdraw"), true);
-        assert_eq!(is_posting("2020-10-05 * Withdraw"), false);
-        assert_eq!(is_posting_comment("2020-10-05 * Withdraw"), false);
-
-        assert_eq!(is_transaction_header("    Liabilities:CreditCard"), false);
-        assert_eq!(is_posting("    Liabilities:CreditCard"), true);
-        assert_eq!(is_posting_comment("    Liabilities:CreditCard"), false);
-
-        assert_eq!(is_transaction_header("    ; comment"), false);
-        assert_eq!(is_posting("    ; comment"), false);
-        assert_eq!(is_posting_comment("    ; comment"), true);
     }
 }
