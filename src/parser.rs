@@ -66,7 +66,7 @@ pub struct RawPosting<'a> {
     account: &'a str,
     amount: Option<RawAmount<'a>>,
     assign: Option<RawAmount<'a>>,
-    comment: &'a str,
+    comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -196,8 +196,14 @@ fn amount_dollar(input: &str) -> IResult<&str, RawAmount> {
     )(input)
 }
 
+fn is_unit_char(c: char) -> bool {
+    !c.is_whitespace() &&
+        !c.is_ascii_digit() &&
+        !".,;:?!-+*/^&|=<>[](){}@".contains(c)
+}
+
 fn unit(input: &str) -> IResult<&str, &str> {
-    take_while1(|c: char| !c.is_ascii_whitespace())(input)
+    take_while1(|c: char| is_unit_char(c))(input)
 }
 
 /// Parses amount with arbitrary unit like `1000 JPY`.
@@ -216,25 +222,25 @@ fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
 }
 
 pub fn posting(input: &str) -> IResult<&str, RawPosting> {
-    let (input, _) = space1(input)?;
-    let (input, account) = account(input)?;
-    let (input, amount) = opt(alt((amount_dollar, amount_unit)))(input)?;
-    let (input, assign) = opt(assign_amount)(input)?;
-    let (input, remain) = opt(take_until(";"))(input)?;
-
-    let comment = match remain {
-        Some(_) => input,
-        None => "",
-    };
-
-    let posting = RawPosting {
-        account: account,
-        amount: amount,
-        assign: assign,
-        comment: comment,
-    };
-
-    Ok(("", posting))
+    map(
+        tuple((
+                space1,
+                account,
+                space0,
+                opt(alt((amount_dollar, amount_unit))),
+                space0,
+                opt(assign_amount),
+                space0,
+                opt(comment),
+                opt(char('\n'))
+        )),
+        |(_, account, _, amount, _, assign, _, comment, _)| RawPosting {
+            account: account,
+            amount: amount,
+            assign: assign,
+            comment: comment,
+        }
+    )(input)
 }
 
 pub fn is_transaction_header(input: &str) -> bool {
@@ -426,16 +432,16 @@ mod test {
     }
 
     #[test]
-    fn normal_posting() {
+    fn parse_normal_posting() {
         assert_eq!(
-            posting("    Assets:Cash $100.05"),
+            posting("    Assets:Cash $100.05\n"),
             Ok((
                 "",
                 RawPosting {
                     account: "Assets:Cash",
-                    amount: Some(RawAmount::from_str("100.05", "$")),
+                    amount: Some(RawAmount::from_str("$100.05", "$")),
                     assign: None,
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
@@ -447,7 +453,7 @@ mod test {
                     account: "Assets:Cash",
                     amount: Some(RawAmount::from_str("3000", "JPY")),
                     assign: None,
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
@@ -459,42 +465,42 @@ mod test {
                     account: "Liabilities:CreditCard",
                     amount: Some(RawAmount::from_str("-3000", "JPY")),
                     assign: None,
-                    comment: "; comment",
+                    comment: Some("comment"),
                 }
             ))
         );
     }
 
     #[test]
-    fn assign_ok() {
+    fn parse_assign_posting() {
         assert_eq!(
-            assign_amount(" = 3000 JPY"),
-            Ok(("", RawAmount::from_str("3000", "JPY")))
-        );
-        assert_eq!(
-            assign_amount(" = 0"),
-            Ok(("", RawAmount::from_str("0", "")))
-        );
-    }
-
-    #[test]
-    fn assign_posting() {
-        assert_eq!(
-            posting("    Assets:Cash    500 JPY = 3000 JPY"),
+            posting("    Assets:Cash    500 JPY = 3000 JPY\n"),
             Ok((
                 "",
                 RawPosting {
                     account: "Assets:Cash",
                     amount: Some(RawAmount::from_str("500", "JPY")),
                     assign: Some(RawAmount::from_str("3000", "JPY")),
-                    comment: "",
+                    comment: None,
+                }
+            ))
+        );
+        assert_eq!(
+            posting("    Assets:Cash    =0 ; balance the cash\n"),
+            Ok((
+                "",
+                RawPosting {
+                    account: "Assets:Cash",
+                    amount: None,
+                    assign: Some(RawAmount::from_str("0", "")),
+                    comment: Some("balance the cash"),
                 }
             ))
         );
     }
 
     #[test]
-    fn elided_posting() {
+    fn parse_elided_posting() {
         assert_eq!(
             posting("    Assets:Cash"),
             Ok((
@@ -503,7 +509,7 @@ mod test {
                     account: "Assets:Cash",
                     amount: None,
                     assign: None,
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
