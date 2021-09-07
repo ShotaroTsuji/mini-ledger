@@ -165,6 +165,7 @@ fn account(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| !c.is_ascii_whitespace())(input)
 }
 
+// Parses a decimal value without sign
 fn unsigned_decimal(input: &str) -> IResult<&str, &str> {
     recognize(
         tuple((
@@ -200,15 +201,10 @@ fn unit(input: &str) -> IResult<&str, &str> {
 }
 
 fn amount_unit(input: &str) -> IResult<&str, RawAmount> {
-    let (input, result) = tuple((space1, decimal, space1, unit))(input)?;
-
-    Ok((
-        input,
-        RawAmount {
-            price: result.1,
-            unit: result.3,
-        },
-    ))
+    map(
+        tuple((decimal, space1, unit)),
+        |(price, _, unit)| RawAmount::from_str(price, unit)
+    )(input)
 }
 
 fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
@@ -401,6 +397,22 @@ mod test {
         assert_eq!(amount_dollar("$100"), Ok(("", RawAmount::dollar("$100"))));
         assert_eq!(amount_dollar("$10.0"), Ok(("", RawAmount::dollar("$10.0"))));
         assert_eq!(amount_dollar("-$5.0"), Ok(("", RawAmount::dollar("-$5.0"))));
+    }
+
+    #[test]
+    fn parse_unit_amount() {
+        assert_eq!(
+            amount_unit("320 JPY"),
+            Ok(("", RawAmount::from_str("320", "JPY")))
+        );
+        assert_eq!(
+            amount_unit("-12.5 JPY"),
+            Ok(("", RawAmount::from_str("-12.5", "JPY")))
+        );
+        assert_eq!(
+            amount_unit("1,000 VTI"),
+            Ok(("", RawAmount::from_str("1,000", "VTI")))
+        );
     }
 
     #[test]
