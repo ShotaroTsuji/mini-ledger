@@ -1,15 +1,15 @@
-use std::borrow::Cow;
 use chrono::NaiveDate;
-use thiserror::Error;
-use nom::IResult;
 use nom::branch::alt;
-use nom::multi::many0_count;
-use nom::combinator::{opt, recognize, map};
-use nom::sequence::{tuple, preceded};
 use nom::bytes::complete::{take_till, take_until, take_while1};
-use nom::character::complete::{digit1, char, space1, one_of, none_of};
+use nom::character::complete::{char, digit1, none_of, one_of, space1};
+use nom::combinator::{map, opt, recognize};
+use nom::multi::many0_count;
+use nom::sequence::{preceded, tuple};
+use nom::IResult;
+use std::borrow::Cow;
+use thiserror::Error;
 
-#[derive(Debug,Error,PartialEq)]
+#[derive(Debug, Error, PartialEq)]
 enum ParseError {
     #[error("Invalid date format")]
     DateFormat,
@@ -25,14 +25,14 @@ enum ParseError {
     DupUnit,
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     Cleared,
     Pending,
     Uncleared,
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RawTransaction<'a> {
     date: RawDate<'a>,
     edate: Option<RawDate<'a>>,
@@ -42,7 +42,7 @@ pub struct RawTransaction<'a> {
     comment: &'a str,
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RawAmount<'a> {
     price: &'a str,
     unit: &'a str,
@@ -57,7 +57,7 @@ impl<'a> RawAmount<'a> {
     }
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RawPosting<'a> {
     account: &'a str,
     amount: Option<RawAmount<'a>>,
@@ -65,7 +65,7 @@ pub struct RawPosting<'a> {
     comment: &'a str,
 }
 
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RawDate<'a> {
     pub year: &'a str,
     pub month: &'a str,
@@ -89,16 +89,16 @@ impl<'a> RawDate<'a> {
 // Parses a date separated with slashes like `2021/09/07`.
 fn date_slash(input: &str) -> IResult<&str, (&str, &str, &str)> {
     map(
-        tuple(( digit1, char('/'), digit1, char('/'), digit1 )),
-        |(y, _, m, _, d)| (y, m, d)
+        tuple((digit1, char('/'), digit1, char('/'), digit1)),
+        |(y, _, m, _, d)| (y, m, d),
     )(input)
 }
 
 // Parses a date separated with hyphens like `2021-09-07`.
 fn date_dash(input: &str) -> IResult<&str, (&str, &str, &str)> {
     map(
-        tuple(( digit1, char('-'), digit1, char('-'), digit1 )),
-        |(y, _, m, _, d)| (y, m, d)
+        tuple((digit1, char('-'), digit1, char('-'), digit1)),
+        |(y, _, m, _, d)| (y, m, d),
     )(input)
 }
 
@@ -109,14 +109,11 @@ fn date(input: &str) -> IResult<&str, RawDate> {
 
 // Parses transaction status
 fn status(input: &str) -> IResult<&str, Status> {
-    map(
-        one_of("!*"),
-        |c| match c {
-                '*' => Status::Cleared,
-                '!' => Status::Pending,
-                _ => unreachable!(),
-            }
-    )(input)
+    map(one_of("!*"), |c| match c {
+        '*' => Status::Cleared,
+        '!' => Status::Pending,
+        _ => unreachable!(),
+    })(input)
 }
 
 // Parses transaction code
@@ -125,20 +122,21 @@ fn status(input: &str) -> IResult<&str, Status> {
 fn code(input: &str) -> IResult<&str, &str> {
     map(
         tuple((char('('), take_until(")"), char(')'))),
-        |(_, code, _)| code
+        |(_, code, _)| code,
     )(input)
 }
 
 pub fn transaction_header(input: &str) -> IResult<&str, RawTransaction> {
-    map(tuple((
+    map(
+        tuple((
             date,
             opt(preceded(char('='), date)),
             opt(preceded(space1, status)),
             opt(preceded(space1, code)),
             space1,
             take_till(|c: char| c == ';'),
-            take_till(|c: char| c == '\n')
-    )),
+            take_till(|c: char| c == '\n'),
+        )),
         |(date, edate, status, code, _, desc, comment)| RawTransaction {
             date: date,
             edate: edate,
@@ -146,7 +144,7 @@ pub fn transaction_header(input: &str) -> IResult<&str, RawTransaction> {
             code: code,
             description: desc,
             comment: comment,
-        }
+        },
     )(input)
 }
 
@@ -155,22 +153,24 @@ fn account(input: &str) -> IResult<&str, &str> {
 }
 
 fn decimal(input: &str) -> IResult<&str, &str> {
-    recognize(tuple(
-            (opt(one_of("+-")),
-             digit1,
-             many0_count(tuple((char(','), digit1))),
-             opt(tuple((char('.'), digit1)))
-            )
-    ))(input)
+    recognize(tuple((
+        opt(one_of("+-")),
+        digit1,
+        many0_count(tuple((char(','), digit1))),
+        opt(tuple((char('.'), digit1))),
+    )))(input)
 }
 
 fn amount_dollar(input: &str) -> IResult<&str, RawAmount> {
     let (input, result) = tuple((space1, char('$'), decimal))(input)?;
 
-    Ok((input, RawAmount {
-        price: result.2,
-        unit: "$",
-    }))
+    Ok((
+        input,
+        RawAmount {
+            price: result.2,
+            unit: "$",
+        },
+    ))
 }
 
 fn unit(input: &str) -> IResult<&str, &str> {
@@ -180,10 +180,13 @@ fn unit(input: &str) -> IResult<&str, &str> {
 fn amount_unit(input: &str) -> IResult<&str, RawAmount> {
     let (input, result) = tuple((space1, decimal, space1, unit))(input)?;
 
-    Ok((input, RawAmount {
-        price: result.1,
-        unit: result.3,
-    }))
+    Ok((
+        input,
+        RawAmount {
+            price: result.1,
+            unit: result.3,
+        },
+    ))
 }
 
 fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
@@ -193,10 +196,13 @@ fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
     let (input, price) = decimal(input)?;
     let (input, result) = opt(tuple((space1, unit)))(input)?;
 
-    Ok((input, RawAmount {
-        price: price,
-        unit: result.map(|x| x.1).unwrap_or(""),
-    }))
+    Ok((
+        input,
+        RawAmount {
+            price: price,
+            unit: result.map(|x| x.1).unwrap_or(""),
+        },
+    ))
 }
 
 pub fn posting(input: &str) -> IResult<&str, RawPosting> {
@@ -272,36 +278,45 @@ mod test {
     fn trans_header_ok() {
         assert_eq!(
             transaction_header("2020-11-30 * Withdraw"),
-            Ok(("", RawTransaction {
-                date: RawDate::from_ymd("2020", "11", "30"),
-                edate: None,
-                status: Status::Cleared,
-                code: None,
-                description: "Withdraw",
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawTransaction {
+                    date: RawDate::from_ymd("2020", "11", "30"),
+                    edate: None,
+                    status: Status::Cleared,
+                    code: None,
+                    description: "Withdraw",
+                    comment: "",
+                }
+            ))
         );
         assert_eq!(
             transaction_header("2020-11-30 ! Withdraw   "),
-            Ok(("", RawTransaction {
-                date: RawDate::from_ymd("2020", "11", "30"),
-                edate: None,
-                status: Status::Pending,
-                code: None,
-                description: "Withdraw   ",
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawTransaction {
+                    date: RawDate::from_ymd("2020", "11", "30"),
+                    edate: None,
+                    status: Status::Pending,
+                    code: None,
+                    description: "Withdraw   ",
+                    comment: "",
+                }
+            ))
         );
         assert_eq!(
             transaction_header("2020-11-30 Withdraw ; comment"),
-            Ok(("", RawTransaction {
-                date: RawDate::from_ymd("2020", "11", "30"),
-                edate: None,
-                status: Status::Uncleared,
-                code: None,
-                description: "Withdraw ",
-                comment: "; comment",
-            }))
+            Ok((
+                "",
+                RawTransaction {
+                    date: RawDate::from_ymd("2020", "11", "30"),
+                    edate: None,
+                    status: Status::Uncleared,
+                    code: None,
+                    description: "Withdraw ",
+                    comment: "; comment",
+                }
+            ))
         );
     }
 
@@ -309,14 +324,17 @@ mod test {
     fn trans_header_edate_ok() {
         assert_eq!(
             transaction_header("2020-11-30=2020-12-14 * Withdraw"),
-            Ok(("", RawTransaction {
-                date: RawDate::from_ymd("2020", "11", "30"),
-                edate: Some(RawDate::from_ymd("2020", "12", "14")),
-                status: Status::Cleared,
-                code: None,
-                description: "Withdraw",
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawTransaction {
+                    date: RawDate::from_ymd("2020", "11", "30"),
+                    edate: Some(RawDate::from_ymd("2020", "12", "14")),
+                    status: Status::Cleared,
+                    code: None,
+                    description: "Withdraw",
+                    comment: "",
+                }
+            ))
         );
     }
 
@@ -324,14 +342,17 @@ mod test {
     fn trans_header_code_ok() {
         assert_eq!(
             transaction_header("2020-11-30 * (#100) Withdraw"),
-            Ok(("", RawTransaction {
-                date: RawDate::from_ymd("2020", "11", "30"),
-                edate: None,
-                status: Status::Cleared,
-                code: Some("#100"),
-                description: "Withdraw",
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawTransaction {
+                    date: RawDate::from_ymd("2020", "11", "30"),
+                    edate: None,
+                    status: Status::Cleared,
+                    code: Some("#100"),
+                    description: "Withdraw",
+                    comment: "",
+                }
+            ))
         );
     }
 
@@ -339,30 +360,39 @@ mod test {
     fn normal_posting() {
         assert_eq!(
             posting("    Assets:Cash $100.05"),
-            Ok(("", RawPosting {
-                account: "Assets:Cash",
-                amount: Some(RawAmount::from_str("100.05", "$")),
-                assign: None,
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawPosting {
+                    account: "Assets:Cash",
+                    amount: Some(RawAmount::from_str("100.05", "$")),
+                    assign: None,
+                    comment: "",
+                }
+            ))
         );
         assert_eq!(
             posting("    Assets:Cash 3000 JPY   "),
-            Ok(("", RawPosting {
-                account: "Assets:Cash",
-                amount: Some(RawAmount::from_str("3000", "JPY")),
-                assign: None,
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawPosting {
+                    account: "Assets:Cash",
+                    amount: Some(RawAmount::from_str("3000", "JPY")),
+                    assign: None,
+                    comment: "",
+                }
+            ))
         );
         assert_eq!(
             posting("    Liabilities:CreditCard -3000 JPY ; comment"),
-            Ok(("", RawPosting {
-                account: "Liabilities:CreditCard",
-                amount: Some(RawAmount::from_str("-3000", "JPY")),
-                assign: None,
-                comment: "; comment",
-            }))
+            Ok((
+                "",
+                RawPosting {
+                    account: "Liabilities:CreditCard",
+                    amount: Some(RawAmount::from_str("-3000", "JPY")),
+                    assign: None,
+                    comment: "; comment",
+                }
+            ))
         );
     }
 
@@ -382,12 +412,15 @@ mod test {
     fn assign_posting() {
         assert_eq!(
             posting("    Assets:Cash    500 JPY = 3000 JPY"),
-            Ok(("", RawPosting {
-                account: "Assets:Cash",
-                amount: Some(RawAmount::from_str("500", "JPY")),
-                assign: Some(RawAmount::from_str("3000", "JPY")),
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawPosting {
+                    account: "Assets:Cash",
+                    amount: Some(RawAmount::from_str("500", "JPY")),
+                    assign: Some(RawAmount::from_str("3000", "JPY")),
+                    comment: "",
+                }
+            ))
         );
     }
 
@@ -395,12 +428,15 @@ mod test {
     fn elided_posting() {
         assert_eq!(
             posting("    Assets:Cash"),
-            Ok(("", RawPosting {
-                account: "Assets:Cash",
-                amount: None,
-                assign: None,
-                comment: "",
-            }))
+            Ok((
+                "",
+                RawPosting {
+                    account: "Assets:Cash",
+                    amount: None,
+                    assign: None,
+                    comment: "",
+                }
+            ))
         );
     }
 
