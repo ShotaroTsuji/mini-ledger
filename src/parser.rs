@@ -4,8 +4,8 @@ use thiserror::Error;
 use nom::IResult;
 use nom::branch::alt;
 use nom::multi::many0_count;
-use nom::combinator::{opt, recognize};
-use nom::sequence::tuple;
+use nom::combinator::{opt, recognize, map};
+use nom::sequence::{tuple, preceded};
 use nom::bytes::complete::{take_till, take_until, take_while1};
 use nom::character::complete::{digit1, char, space1, one_of, none_of};
 
@@ -67,73 +67,87 @@ pub struct RawPosting<'a> {
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct RawDate<'a> {
-    year: &'a str,
-    month: &'a str,
-    day: &'a str,
+    pub year: &'a str,
+    pub month: &'a str,
+    pub day: &'a str,
 }
 
 impl<'a> RawDate<'a> {
-    pub fn from_str(y: &'a str, m: &'a str, d: &'a str) -> Self {
+    pub fn from_ymd(y: &'a str, m: &'a str, d: &'a str) -> Self {
         RawDate {
             year: y,
             month: m,
             day: d,
         }
     }
+
+    pub fn from_triple(t: (&'a str, &'a str, &'a str)) -> Self {
+        Self::from_ymd(t.0, t.1, t.2)
+    }
 }
 
-fn date_slash(input: &str) -> IResult<&str, (&str, char, &str, char, &str)> {
-    tuple(( digit1, char('/'), digit1, char('/'), digit1 ))(input)
+// Parses a date separated with slashes like `2021/09/07`.
+fn date_slash(input: &str) -> IResult<&str, (&str, &str, &str)> {
+    map(
+        tuple(( digit1, char('/'), digit1, char('/'), digit1 )),
+        |(y, _, m, _, d)| (y, m, d)
+    )(input)
 }
 
-fn date_dash(input: &str) -> IResult<&str, (&str, char, &str, char, &str)> {
-    tuple(( digit1, char('-'), digit1, char('-'), digit1 ))(input)
+// Parses a date separated with hyphens like `2021-09-07`.
+fn date_dash(input: &str) -> IResult<&str, (&str, &str, &str)> {
+    map(
+        tuple(( digit1, char('-'), digit1, char('-'), digit1 )),
+        |(y, _, m, _, d)| (y, m, d)
+    )(input)
 }
 
-pub fn date(input: &str) -> IResult<&str, RawDate> {
-    let (input, date) = alt((date_slash, date_dash))(input)?;
-    let date = RawDate {
-        year: date.0,
-        month: date.2,
-        day: date.4,
-    };
-    Ok((input, date))
+/// Parses transaction date
+fn date(input: &str) -> IResult<&str, RawDate> {
+    map(alt((date_slash, date_dash)), RawDate::from_triple)(input)
 }
 
+// Parses transaction status
 fn status(input: &str) -> IResult<&str, Status> {
-    let (input, (_, result)) = tuple((space1, one_of("!*")))(input)?;
-    let result = match result {
-        '*' => Status::Cleared,
-        '!' => Status::Pending,
-        _ => unreachable!(),
-    };
-    Ok((input, result))
+    map(
+        one_of("!*"),
+        |c| match c {
+                '*' => Status::Cleared,
+                '!' => Status::Pending,
+                _ => unreachable!(),
+            }
+    )(input)
 }
 
+// Parses transaction code
+//
+// A transaction code is a code delimited by parentheses.
 fn code(input: &str) -> IResult<&str, &str> {
-    let (input, result) = tuple((space1, char('('), take_until(")"), char(')')))(input)?;
-    Ok((input, result.2))
+    map(
+        tuple((char('('), take_until(")"), char(')'))),
+        |(_, code, _)| code
+    )(input)
 }
 
 pub fn transaction_header(input: &str) -> IResult<&str, RawTransaction> {
-    let (input, r_date) = date(input)?;
-    let (input, edate) = opt(tuple((char('='), date)))(input)?;
-    let (input, status) = opt(status)(input)?;
-    let (input, code) = opt(code)(input)?;
-    let (input, _) = space1(input)?;
-    let (input, desc) = take_till(|c: char| c == ';')(input)?;
-    let comment = input;
-
-    let trans = RawTransaction {
-        date: r_date,
-        edate: edate.map(|(_, d)| d),
-        status: status.unwrap_or(Status::Uncleared),
-        code: code,
-        description: desc,
-        comment: comment,
-    };
-
-    Ok(("", trans))
+    map(tuple((
+            date,
+            opt(preceded(char('='), date)),
+            opt(preceded(space1, status)),
+            opt(preceded(space1, code)),
+            space1,
+            take_till(|c: char| c == ';'),
+            take_till(|c: char| c == '\n')
+    )),
+        |(date, edate, status, code, _, desc, comment)| RawTransaction {
+            date: date,
+            edate: edate,
+            status: status.unwrap_or(Status::Uncleared),
+            code: code,
+            description: desc,
+            comment: comment,
+        }
+    )(input)
 }
 
 fn account(input: &str) -> IResult<&str, &str> {
@@ -229,17 +243,20 @@ mod test {
     use super::*;
 
     #[test]
-    fn date_ok() {
-        assert_eq!(date_dash("2020-11-20"), Ok(("", ("2020", '-', "11", '-', "20"))));
-        assert_eq!(date_slash("2020/11/20"), Ok(("", ("2020", '/', "11", '/', "20"))));
+    fn parse_date() {
         assert_eq!(
-            date("2020-11-30 * Withdraw"),
-            Ok((" * Withdraw", RawDate {
-                year: "2020",
-                month: "11",
-                day: "30",
-            }))
+            date("2020/11/30"),
+            Ok(("", RawDate::from_ymd("2020", "11", "30")))
         );
+        assert_eq!(
+            date("2020-01-30"),
+            Ok(("", RawDate::from_ymd("2020", "01", "30")))
+        );
+    }
+
+    #[test]
+    fn parse_code() {
+        assert_eq!(code("(302)"), Ok(("", "302")));
     }
 
     #[test]
@@ -256,7 +273,7 @@ mod test {
         assert_eq!(
             transaction_header("2020-11-30 * Withdraw"),
             Ok(("", RawTransaction {
-                date: RawDate::from_str("2020", "11", "30"),
+                date: RawDate::from_ymd("2020", "11", "30"),
                 edate: None,
                 status: Status::Cleared,
                 code: None,
@@ -267,7 +284,7 @@ mod test {
         assert_eq!(
             transaction_header("2020-11-30 ! Withdraw   "),
             Ok(("", RawTransaction {
-                date: RawDate::from_str("2020", "11", "30"),
+                date: RawDate::from_ymd("2020", "11", "30"),
                 edate: None,
                 status: Status::Pending,
                 code: None,
@@ -278,7 +295,7 @@ mod test {
         assert_eq!(
             transaction_header("2020-11-30 Withdraw ; comment"),
             Ok(("", RawTransaction {
-                date: RawDate::from_str("2020", "11", "30"),
+                date: RawDate::from_ymd("2020", "11", "30"),
                 edate: None,
                 status: Status::Uncleared,
                 code: None,
@@ -293,8 +310,8 @@ mod test {
         assert_eq!(
             transaction_header("2020-11-30=2020-12-14 * Withdraw"),
             Ok(("", RawTransaction {
-                date: RawDate::from_str("2020", "11", "30"),
-                edate: Some(RawDate::from_str("2020", "12", "14")),
+                date: RawDate::from_ymd("2020", "11", "30"),
+                edate: Some(RawDate::from_ymd("2020", "12", "14")),
                 status: Status::Cleared,
                 code: None,
                 description: "Withdraw",
@@ -308,7 +325,7 @@ mod test {
         assert_eq!(
             transaction_header("2020-11-30 * (#100) Withdraw"),
             Ok(("", RawTransaction {
-                date: RawDate::from_str("2020", "11", "30"),
+                date: RawDate::from_ymd("2020", "11", "30"),
                 edate: None,
                 status: Status::Cleared,
                 code: Some("#100"),
