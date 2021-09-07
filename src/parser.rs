@@ -200,27 +200,19 @@ fn unit(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| !c.is_ascii_whitespace())(input)
 }
 
+/// Parses amount with arbitrary unit like `1000 JPY`.
 fn amount_unit(input: &str) -> IResult<&str, RawAmount> {
     map(
-        tuple((decimal, space1, unit)),
-        |(price, _, unit)| RawAmount::from_str(price, unit)
+        tuple((decimal, opt(preceded(space1, unit)))),
+        |(price, unit)| RawAmount::from_str(price, unit.unwrap_or(""))
     )(input)
 }
 
 fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
-    let (input, _) = space1(input)?;
-    let (input, _) = char('=')(input)?;
-    let (input, _) = space1(input)?;
-    let (input, price) = decimal(input)?;
-    let (input, result) = opt(tuple((space1, unit)))(input)?;
-
-    Ok((
-        input,
-        RawAmount {
-            price: price,
-            unit: result.map(|x| x.1).unwrap_or(""),
-        },
-    ))
+    map(
+        tuple((char('='), space0, alt((amount_dollar, amount_unit)))),
+        |(_, _, amount)| amount
+    )(input)
 }
 
 pub fn posting(input: &str) -> IResult<&str, RawPosting> {
@@ -400,6 +392,12 @@ mod test {
     }
 
     #[test]
+    fn parse_plain_amount() {
+        assert_eq!(amount_unit("0"), Ok(("", RawAmount::from_str("0", ""))));
+        assert_eq!(amount_unit("11.0"), Ok(("", RawAmount::from_str("11.0", ""))));
+    }
+
+    #[test]
     fn parse_unit_amount() {
         assert_eq!(
             amount_unit("320 JPY"),
@@ -412,6 +410,18 @@ mod test {
         assert_eq!(
             amount_unit("1,000 VTI"),
             Ok(("", RawAmount::from_str("1,000", "VTI")))
+        );
+    }
+
+    #[test]
+    fn parse_assign_amount() {
+        assert_eq!(
+            assign_amount("= 100 JPY"),
+            Ok(("", RawAmount::from_str("100", "JPY")))
+        );
+        assert_eq!(
+            assign_amount("= 0"),
+            Ok(("", RawAmount::from_str("0", "")))
         );
     }
 
