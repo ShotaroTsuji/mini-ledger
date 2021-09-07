@@ -1,7 +1,7 @@
 use chrono::NaiveDate;
 use nom::branch::alt;
-use nom::bytes::complete::{take_till, take_until, take_while1};
-use nom::character::complete::{char, digit1, none_of, one_of, space1};
+use nom::bytes::complete::{take_while, take_until, take_while1};
+use nom::character::complete::{char, digit1, none_of, one_of, space0, space1};
 use nom::combinator::{map, opt, recognize};
 use nom::multi::many0_count;
 use nom::sequence::{preceded, tuple};
@@ -39,7 +39,7 @@ pub struct RawTransaction<'a> {
     status: Status,
     code: Option<&'a str>,
     description: &'a str,
-    comment: &'a str,
+    comment: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -126,6 +126,13 @@ fn code(input: &str) -> IResult<&str, &str> {
     )(input)
 }
 
+fn comment(input: &str) -> IResult<&str, &str> {
+    preceded(
+        tuple((char(';'), space0)),
+        take_while(|c| c != '\n')
+    )(input)
+}
+
 pub fn transaction_header(input: &str) -> IResult<&str, RawTransaction> {
     map(
         tuple((
@@ -134,10 +141,11 @@ pub fn transaction_header(input: &str) -> IResult<&str, RawTransaction> {
             opt(preceded(space1, status)),
             opt(preceded(space1, code)),
             space1,
-            take_till(|c: char| c == ';'),
-            take_till(|c: char| c == '\n'),
+            take_while(|c: char| c != ';' && c != '\n'),
+            opt(comment),
+            opt(char('\n'))
         )),
-        |(date, edate, status, code, _, desc, comment)| RawTransaction {
+        |(date, edate, status, code, _, desc, comment, _)| RawTransaction {
             date: date,
             edate: edate,
             status: status.unwrap_or(Status::Uncleared),
@@ -275,23 +283,23 @@ mod test {
     }
 
     #[test]
-    fn trans_header_ok() {
+    fn parse_simple_transaction_header() {
         assert_eq!(
-            transaction_header("2020-11-30 * Withdraw"),
+            transaction_header("2020-11-30 * Withdraw\n    "),
             Ok((
-                "",
+                "    ",
                 RawTransaction {
                     date: RawDate::from_ymd("2020", "11", "30"),
                     edate: None,
                     status: Status::Cleared,
                     code: None,
                     description: "Withdraw",
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
         assert_eq!(
-            transaction_header("2020-11-30 ! Withdraw   "),
+            transaction_header("2020-11-30 ! Withdraw   \n"),
             Ok((
                 "",
                 RawTransaction {
@@ -300,12 +308,12 @@ mod test {
                     status: Status::Pending,
                     code: None,
                     description: "Withdraw   ",
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
         assert_eq!(
-            transaction_header("2020-11-30 Withdraw ; comment"),
+            transaction_header("2020-11-30 Withdraw ; comment\n"),
             Ok((
                 "",
                 RawTransaction {
@@ -314,7 +322,7 @@ mod test {
                     status: Status::Uncleared,
                     code: None,
                     description: "Withdraw ",
-                    comment: "; comment",
+                    comment: Some("comment"),
                 }
             ))
         );
@@ -332,7 +340,7 @@ mod test {
                     status: Status::Cleared,
                     code: None,
                     description: "Withdraw",
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
@@ -350,7 +358,7 @@ mod test {
                     status: Status::Cleared,
                     code: Some("#100"),
                     description: "Withdraw",
-                    comment: "",
+                    comment: None,
                 }
             ))
         );
