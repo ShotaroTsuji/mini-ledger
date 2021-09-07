@@ -500,4 +500,9 @@ mod test {
             ))
         );
     }
+
+    #[test]
+    fn parse_posting_without_indent() {
+        assert!(posting("Assets:Cash").is_err());
+    }
 }
