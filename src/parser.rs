@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use nom::branch::alt;
-use nom::bytes::complete::{take_while, take_until, take_while1};
+use nom::bytes::complete::{take_while, take_until, take_while1, tag};
 use nom::character::complete::{char, digit1, none_of, one_of, space0, space1};
 use nom::combinator::{map, opt, recognize};
 use nom::multi::many0_count;
@@ -165,18 +165,34 @@ fn account(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| !c.is_ascii_whitespace())(input)
 }
 
+fn unsigned_decimal(input: &str) -> IResult<&str, &str> {
+    recognize(
+        tuple((
+            digit1,
+            many0_count(tuple((char(','), digit1))),
+            opt(tuple((char('.'), digit1)))
+        ))
+    )(input)
+}
+
 // Parses a decimal value
 fn decimal(input: &str) -> IResult<&str, &str> {
     recognize(tuple((
         opt(one_of("+-")),
-        digit1,
-        many0_count(tuple((char(','), digit1))),
-        opt(tuple((char('.'), digit1))),
+        unsigned_decimal,
     )))(input)
 }
 
 fn amount_dollar(input: &str) -> IResult<&str, RawAmount> {
-    map(preceded(char('$'), decimal), RawAmount::dollar)(input)
+    map(
+        recognize(
+            tuple((
+                alt((tag("-$"), tag("$"))),
+                unsigned_decimal
+            )),
+        ),
+        RawAmount::dollar
+    )(input)
 }
 
 fn unit(input: &str) -> IResult<&str, &str> {
@@ -382,8 +398,9 @@ mod test {
 
     #[test]
     fn parse_dollar_amount() {
-        assert_eq!(amount_dollar("$100"), Ok(("", RawAmount::dollar("100"))));
-        assert_eq!(amount_dollar("$10.0"), Ok(("", RawAmount::dollar("10.0"))));
+        assert_eq!(amount_dollar("$100"), Ok(("", RawAmount::dollar("$100"))));
+        assert_eq!(amount_dollar("$10.0"), Ok(("", RawAmount::dollar("$10.0"))));
+        assert_eq!(amount_dollar("-$5.0"), Ok(("", RawAmount::dollar("-$5.0"))));
     }
 
     #[test]
