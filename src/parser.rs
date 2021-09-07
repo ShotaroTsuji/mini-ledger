@@ -55,6 +55,10 @@ impl<'a> RawAmount<'a> {
             unit: unit,
         }
     }
+
+    pub fn dollar(price: &'a str) -> Self {
+        Self::from_str(price, "$")
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -156,10 +160,12 @@ pub fn transaction_header(input: &str) -> IResult<&str, RawTransaction> {
     )(input)
 }
 
+// Parses an account name
 fn account(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| !c.is_ascii_whitespace())(input)
 }
 
+// Parses a decimal value
 fn decimal(input: &str) -> IResult<&str, &str> {
     recognize(tuple((
         opt(one_of("+-")),
@@ -170,15 +176,7 @@ fn decimal(input: &str) -> IResult<&str, &str> {
 }
 
 fn amount_dollar(input: &str) -> IResult<&str, RawAmount> {
-    let (input, result) = tuple((space1, char('$'), decimal))(input)?;
-
-    Ok((
-        input,
-        RawAmount {
-            price: result.2,
-            unit: "$",
-        },
-    ))
+    map(preceded(char('$'), decimal), RawAmount::dollar)(input)
 }
 
 fn unit(input: &str) -> IResult<&str, &str> {
@@ -271,15 +269,6 @@ mod test {
     #[test]
     fn parse_code() {
         assert_eq!(code("(302)"), Ok(("", "302")));
-    }
-
-    #[test]
-    fn decimal_ok() {
-        assert_eq!(decimal("1000"), Ok(("", "1000")));
-        assert_eq!(decimal("-9900"), Ok(("", "-9900")));
-        assert_eq!(decimal("+10.49"), Ok(("", "+10.49")));
-        assert_eq!(decimal("24,000"), Ok(("", "24,000")));
-        assert_eq!(decimal("12,345.992"), Ok(("", "12,345.992")));
     }
 
     #[test]
@@ -380,6 +369,21 @@ mod test {
                 }
             ))
         );
+    }
+
+    #[test]
+    fn parse_decimal_values() {
+        assert_eq!(decimal("1000"), Ok(("", "1000")));
+        assert_eq!(decimal("-9900"), Ok(("", "-9900")));
+        assert_eq!(decimal("+10.49"), Ok(("", "+10.49")));
+        assert_eq!(decimal("24,000"), Ok(("", "24,000")));
+        assert_eq!(decimal("12,345.992"), Ok(("", "12,345.992")));
+    }
+
+    #[test]
+    fn parse_dollar_amount() {
+        assert_eq!(amount_dollar("$100"), Ok(("", RawAmount::dollar("100"))));
+        assert_eq!(amount_dollar("$10.0"), Ok(("", RawAmount::dollar("10.0"))));
     }
 
     #[test]
