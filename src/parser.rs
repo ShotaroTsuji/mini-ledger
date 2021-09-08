@@ -66,6 +66,7 @@ pub struct RawPosting<'a> {
     account: &'a str,
     amount: Option<RawAmount<'a>>,
     assign: Option<RawAmount<'a>>,
+    cost: Option<RawAmount<'a>>,
     comment: Option<&'a str>,
 }
 
@@ -224,6 +225,13 @@ fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
     )(input)
 }
 
+fn cost(input: &str) -> IResult<&str, RawAmount> {
+    preceded(
+        tuple((char('@'), space0)),
+        amount_unit
+    )(input)
+}
+
 pub fn posting(input: &str) -> IResult<&str, RawPosting> {
     map(
         tuple((
@@ -234,13 +242,16 @@ pub fn posting(input: &str) -> IResult<&str, RawPosting> {
                 space0,
                 opt(assign_amount),
                 space0,
+                opt(cost),
+                space0,
                 opt(comment),
                 opt(char('\n'))
         )),
-        |(_, account, _, amount, _, assign, _, comment, _)| RawPosting {
+        |(_, account, _, amount, _, assign, _, cost, _, comment, _)| RawPosting {
             account: account,
             amount: amount,
             assign: assign,
+            cost: cost,
             comment: comment,
         }
     )(input)
@@ -434,6 +445,7 @@ mod test {
                     account: "Assets:Cash",
                     amount: Some(RawAmount::from_str("100.05", "EUR")),
                     assign: None,
+                    cost: None,
                     comment: None,
                 }
             ))
@@ -446,6 +458,7 @@ mod test {
                     account: "Assets:Cash",
                     amount: Some(RawAmount::from_str("3000", "JPY")),
                     assign: None,
+                    cost: None,
                     comment: None,
                 }
             ))
@@ -458,6 +471,7 @@ mod test {
                     account: "Liabilities:CreditCard",
                     amount: Some(RawAmount::from_str("-3000", "JPY")),
                     assign: None,
+                    cost: None,
                     comment: Some("comment"),
                 }
             ))
@@ -474,6 +488,7 @@ mod test {
                     account: "Assets:Cash",
                     amount: Some(RawAmount::from_str("500", "JPY")),
                     assign: Some(RawAmount::from_str("3000", "JPY")),
+                    cost: None,
                     comment: None,
                 }
             ))
@@ -486,7 +501,25 @@ mod test {
                     account: "Assets:Cash",
                     amount: None,
                     assign: Some(RawAmount::from_str("0", "")),
+                    cost: None,
                     comment: Some("balance the cash"),
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_posting_with_cost() {
+        assert_eq!(
+            posting("    Assets:ETF     1 VTI @ 12300 JPY\n"),
+            Ok((
+                "",
+                RawPosting {
+                    account: "Assets:ETF",
+                    amount: Some(RawAmount::from_str("1", "VTI")),
+                    assign: None,
+                    cost: Some(RawAmount::from_str("12300", "JPY")),
+                    comment: None,
                 }
             ))
         );
@@ -502,6 +535,7 @@ mod test {
                     account: "Assets:Cash",
                     amount: None,
                     assign: None,
+                    cost: None,
                     comment: None,
                 }
             ))
