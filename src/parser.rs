@@ -6,6 +6,7 @@ use nom::combinator::{map, map_res, opt, recognize};
 use nom::multi::many0_count;
 use nom::sequence::{preceded, tuple};
 use nom::IResult;
+use rust_decimal::Decimal;
 use std::borrow::Cow;
 use thiserror::Error;
 
@@ -43,20 +44,20 @@ pub struct RawTransaction<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RawAmount<'a> {
-    price: &'a str,
+pub struct Amount<'a> {
+    price: Decimal,
     unit: &'a str,
 }
 
-impl<'a> RawAmount<'a> {
-    pub fn from_str(price: &'a str, unit: &'a str) -> Self {
-        Self {
-            price: price,
+impl<'a> Amount<'a> {
+    pub fn from_str(price: &'a str, unit: &'a str) -> Result<Self, rust_decimal::Error> {
+        Ok(Self {
+            price: price.parse()?,
             unit: unit,
-        }
+        })
     }
 
-    pub fn dollar(price: &'a str) -> Self {
+    pub fn dollar(price: &'a str) -> Result<Self, rust_decimal::Error> {
         Self::from_str(price, "$")
     }
 }
@@ -64,9 +65,9 @@ impl<'a> RawAmount<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawPosting<'a> {
     account: &'a str,
-    amount: Option<RawAmount<'a>>,
-    assign: Option<RawAmount<'a>>,
-    cost: Option<RawAmount<'a>>,
+    amount: Option<Amount<'a>>,
+    assign: Option<Amount<'a>>,
+    cost: Option<Amount<'a>>,
     comment: Option<&'a str>,
 }
 
@@ -183,7 +184,7 @@ fn unsigned_decimal(input: &str) -> IResult<&str, &str> {
     recognize(
         tuple((
             digit1,
-            many0_count(tuple((char(','), digit1))),
+            many0_count(digit1),
             opt(tuple((char('.'), digit1)))
         ))
     )(input)
@@ -197,15 +198,15 @@ fn decimal(input: &str) -> IResult<&str, &str> {
     )))(input)
 }
 
-fn amount_dollar(input: &str) -> IResult<&str, RawAmount> {
-    map(
+fn amount_dollar(input: &str) -> IResult<&str, Amount> {
+    map_res(
         recognize(
             tuple((
                 alt((tag("-$"), tag("$"))),
                 unsigned_decimal
             )),
         ),
-        RawAmount::dollar
+        Amount::dollar
     )(input)
 }
 
@@ -223,21 +224,21 @@ fn unit(input: &str) -> IResult<&str, &str> {
 }
 
 /// Parses amount with arbitrary unit like `1000 JPY`.
-fn amount_unit(input: &str) -> IResult<&str, RawAmount> {
-    map(
+fn amount_unit(input: &str) -> IResult<&str, Amount> {
+    map_res(
         tuple((decimal, opt(preceded(space1, unit)))),
-        |(price, unit)| RawAmount::from_str(price, unit.unwrap_or(""))
+        |(price, unit)| Amount::from_str(price, unit.unwrap_or(""))
     )(input)
 }
 
-fn assign_amount(input: &str) -> IResult<&str, RawAmount> {
+fn assign_amount(input: &str) -> IResult<&str, Amount> {
     map(
-        tuple((char('='), space0, alt((amount_dollar, amount_unit)))),
+        tuple((char('='), space0, amount_unit)),
         |(_, _, amount)| amount
     )(input)
 }
 
-fn cost(input: &str) -> IResult<&str, RawAmount> {
+fn cost(input: &str) -> IResult<&str, Amount> {
     preceded(
         tuple((char('@'), space0)),
         amount_unit
@@ -402,36 +403,27 @@ mod test {
         assert_eq!(decimal("1000"), Ok(("", "1000")));
         assert_eq!(decimal("-9900"), Ok(("", "-9900")));
         assert_eq!(decimal("+10.49"), Ok(("", "+10.49")));
-        assert_eq!(decimal("24,000"), Ok(("", "24,000")));
-        assert_eq!(decimal("12,345.992"), Ok(("", "12,345.992")));
-    }
-
-    #[test]
-    fn parse_dollar_amount() {
-        assert_eq!(amount_dollar("$100"), Ok(("", RawAmount::dollar("$100"))));
-        assert_eq!(amount_dollar("$10.0"), Ok(("", RawAmount::dollar("$10.0"))));
-        assert_eq!(amount_dollar("-$5.0"), Ok(("", RawAmount::dollar("-$5.0"))));
     }
 
     #[test]
     fn parse_plain_amount() {
-        assert_eq!(amount_unit("0"), Ok(("", RawAmount::from_str("0", ""))));
-        assert_eq!(amount_unit("11.0"), Ok(("", RawAmount::from_str("11.0", ""))));
+        assert_eq!(amount_unit("0"), Ok(("", Amount::from_str("0", "").unwrap())));
+        assert_eq!(amount_unit("11.0"), Ok(("", Amount::from_str("11.0", "").unwrap())));
     }
 
     #[test]
     fn parse_unit_amount() {
         assert_eq!(
             amount_unit("320 JPY"),
-            Ok(("", RawAmount::from_str("320", "JPY")))
+            Ok(("", Amount::from_str("320", "JPY").unwrap()))
         );
         assert_eq!(
             amount_unit("-12.5 JPY"),
-            Ok(("", RawAmount::from_str("-12.5", "JPY")))
+            Ok(("", Amount::from_str("-12.5", "JPY").unwrap()))
         );
         assert_eq!(
-            amount_unit("1,000 VTI"),
-            Ok(("", RawAmount::from_str("1,000", "VTI")))
+            amount_unit("1000 VTI"),
+            Ok(("", Amount::from_str("1000", "VTI").unwrap()))
         );
     }
 
@@ -439,11 +431,11 @@ mod test {
     fn parse_assign_amount() {
         assert_eq!(
             assign_amount("= 100 JPY"),
-            Ok(("", RawAmount::from_str("100", "JPY")))
+            Ok(("", Amount::from_str("100", "JPY").unwrap()))
         );
         assert_eq!(
             assign_amount("= 0"),
-            Ok(("", RawAmount::from_str("0", "")))
+            Ok(("", Amount::from_str("0", "").unwrap()))
         );
     }
 
@@ -455,7 +447,7 @@ mod test {
                 "",
                 RawPosting {
                     account: "Assets:Cash",
-                    amount: Some(RawAmount::from_str("100.05", "EUR")),
+                    amount: Some(Amount::from_str("100.05", "EUR").unwrap()),
                     assign: None,
                     cost: None,
                     comment: None,
@@ -468,7 +460,7 @@ mod test {
                 "",
                 RawPosting {
                     account: "Assets:Cash",
-                    amount: Some(RawAmount::from_str("3000", "JPY")),
+                    amount: Some(Amount::from_str("3000", "JPY").unwrap()),
                     assign: None,
                     cost: None,
                     comment: None,
@@ -481,7 +473,7 @@ mod test {
                 "",
                 RawPosting {
                     account: "Liabilities:CreditCard",
-                    amount: Some(RawAmount::from_str("-3000", "JPY")),
+                    amount: Some(Amount::from_str("-3000", "JPY").unwrap()),
                     assign: None,
                     cost: None,
                     comment: Some("comment"),
@@ -498,8 +490,8 @@ mod test {
                 "",
                 RawPosting {
                     account: "Assets:Cash",
-                    amount: Some(RawAmount::from_str("500", "JPY")),
-                    assign: Some(RawAmount::from_str("3000", "JPY")),
+                    amount: Some(Amount::from_str("500", "JPY").unwrap()),
+                    assign: Some(Amount::from_str("3000", "JPY").unwrap()),
                     cost: None,
                     comment: None,
                 }
@@ -512,7 +504,7 @@ mod test {
                 RawPosting {
                     account: "Assets:Cash",
                     amount: None,
-                    assign: Some(RawAmount::from_str("0", "")),
+                    assign: Some(Amount::from_str("0", "").unwrap()),
                     cost: None,
                     comment: Some("balance the cash"),
                 }
@@ -528,9 +520,9 @@ mod test {
                 "",
                 RawPosting {
                     account: "Assets:ETF",
-                    amount: Some(RawAmount::from_str("1", "VTI")),
+                    amount: Some(Amount::from_str("1", "VTI").unwrap()),
                     assign: None,
-                    cost: Some(RawAmount::from_str("12300", "JPY")),
+                    cost: Some(Amount::from_str("12300", "JPY").unwrap()),
                     comment: None,
                 }
             ))
