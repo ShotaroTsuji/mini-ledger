@@ -230,7 +230,7 @@ pub fn posting(input: &str) -> IResult<&str, RawPosting> {
                 space1,
                 account,
                 space0,
-                opt(alt((amount_dollar, amount_unit))),
+                opt(amount_unit),
                 space0,
                 opt(assign_amount),
                 space0,
@@ -427,12 +427,12 @@ mod test {
     #[test]
     fn parse_normal_posting() {
         assert_eq!(
-            posting("    Assets:Cash $100.05\n"),
+            posting("    Assets:Cash 100.05 EUR\n"),
             Ok((
                 "",
                 RawPosting {
                     account: "Assets:Cash",
-                    amount: Some(RawAmount::from_str("$100.05", "$")),
+                    amount: Some(RawAmount::from_str("100.05", "EUR")),
                     assign: None,
                     comment: None,
                 }
