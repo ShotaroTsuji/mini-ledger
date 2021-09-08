@@ -2,7 +2,7 @@ use chrono::NaiveDate;
 use nom::branch::alt;
 use nom::bytes::complete::{take_while, take_until, take_while1, tag};
 use nom::character::complete::{char, digit1, none_of, one_of, space0, space1};
-use nom::combinator::{map, opt, recognize};
+use nom::combinator::{map, map_res, opt, recognize};
 use nom::multi::many0_count;
 use nom::sequence::{preceded, tuple};
 use nom::IResult;
@@ -10,7 +10,7 @@ use std::borrow::Cow;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
-enum ParseError {
+pub enum ParseError {
     #[error("Invalid date format")]
     DateFormat,
     #[error("Out-of-range date")]
@@ -34,8 +34,8 @@ pub enum Status {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawTransaction<'a> {
-    date: RawDate<'a>,
-    edate: Option<RawDate<'a>>,
+    date: NaiveDate,
+    edate: Option<NaiveDate>,
     status: Status,
     code: Option<&'a str>,
     description: &'a str,
@@ -89,6 +89,15 @@ impl<'a> RawDate<'a> {
     pub fn from_triple(t: (&'a str, &'a str, &'a str)) -> Self {
         Self::from_ymd(t.0, t.1, t.2)
     }
+
+    pub fn into_naive_date(self) -> Result<NaiveDate, ParseError> {
+        let year: i32 = self.year.parse().unwrap();
+        let month: u32 = self.month.parse().unwrap();
+        let day: u32 = self.day.parse().unwrap();
+
+        NaiveDate::from_ymd_opt(year, month, day)
+            .ok_or(ParseError::DateOutOfRange)
+    }
 }
 
 // Parses a date separated with slashes like `2021/09/07`.
@@ -108,8 +117,11 @@ fn date_dash(input: &str) -> IResult<&str, (&str, &str, &str)> {
 }
 
 /// Parses transaction date
-fn date(input: &str) -> IResult<&str, RawDate> {
-    map(alt((date_slash, date_dash)), RawDate::from_triple)(input)
+fn date(input: &str) -> IResult<&str, NaiveDate> {
+    map_res(
+        alt((date_slash, date_dash)),
+        |t| RawDate::from_triple(t).into_naive_date()
+    )(input)
 }
 
 // Parses transaction status
@@ -272,9 +284,9 @@ mod test {
     #[test]
     fn parse_date() {
         vec![
-            ("2021/12/23", "", RawDate::from_ymd("2021", "12", "23")),
-            ("2020/05/23", "", RawDate::from_ymd("2020", "05", "23")),
-            ("2020-01-04", "", RawDate::from_ymd("2020", "01", "04")),
+            ("2021/12/23", "", NaiveDate::from_ymd(2021, 12, 23)),
+            ("2020/05/23", "", NaiveDate::from_ymd(2020, 05, 23)),
+            ("2020-01-04", "", NaiveDate::from_ymd(2020, 01, 04)),
         ]
             .into_iter()
             .for_each(|(s, r, e)| parse_assert_eq(date, s, (r, e)));
@@ -292,7 +304,7 @@ mod test {
             Ok((
                 "    ",
                 RawTransaction {
-                    date: RawDate::from_ymd("2020", "11", "30"),
+                    date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Cleared,
                     code: None,
@@ -306,7 +318,7 @@ mod test {
             Ok((
                 "",
                 RawTransaction {
-                    date: RawDate::from_ymd("2020", "11", "30"),
+                    date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Pending,
                     code: None,
@@ -320,7 +332,7 @@ mod test {
             Ok((
                 "",
                 RawTransaction {
-                    date: RawDate::from_ymd("2020", "11", "30"),
+                    date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Uncleared,
                     code: None,
@@ -338,8 +350,8 @@ mod test {
             Ok((
                 "",
                 RawTransaction {
-                    date: RawDate::from_ymd("2020", "11", "30"),
-                    edate: Some(RawDate::from_ymd("2020", "12", "14")),
+                    date: NaiveDate::from_ymd(2020, 11, 30),
+                    edate: Some(NaiveDate::from_ymd(2020, 12, 14)),
                     status: Status::Cleared,
                     code: None,
                     description: "Withdraw",
@@ -356,7 +368,7 @@ mod test {
             Ok((
                 "",
                 RawTransaction {
-                    date: RawDate::from_ymd("2020", "11", "30"),
+                    date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Cleared,
                     code: Some("#100"),
@@ -374,8 +386,8 @@ mod test {
             Ok((
                 "    Assets",
                 RawTransaction {
-                    date: RawDate::from_ymd("2020", "11", "30"),
-                    edate: Some(RawDate::from_ymd("2020", "12", "11")),
+                    date: NaiveDate::from_ymd(2020, 11, 30),
+                    edate: Some(NaiveDate::from_ymd(2020, 12, 11)),
                     status: Status::Cleared,
                     code: Some("#100"),
                     description: "Withdraw ",
