@@ -250,16 +250,23 @@ pub fn posting(input: &str) -> IResult<&str, RawPosting> {
 mod test {
     use super::*;
 
+    fn parse_assert_eq<'a, T, F>(mut f: F, s: &'a str, expected: (&str, T))
+        where
+            F: FnMut(&'a str) -> IResult<&'a str, T>,
+            T: PartialEq + std::fmt::Debug,
+    {
+        assert_eq!(f(s), Ok(expected));
+    }
+
     #[test]
     fn parse_date() {
-        assert_eq!(
-            date("2020/11/30"),
-            Ok(("", RawDate::from_ymd("2020", "11", "30")))
-        );
-        assert_eq!(
-            date("2020-01-30"),
-            Ok(("", RawDate::from_ymd("2020", "01", "30")))
-        );
+        vec![
+            ("2021/12/23", "", RawDate::from_ymd("2021", "12", "23")),
+            ("2020/05/23", "", RawDate::from_ymd("2020", "05", "23")),
+            ("2020-01-04", "", RawDate::from_ymd("2020", "01", "04")),
+        ]
+            .into_iter()
+            .for_each(|(s, r, e)| parse_assert_eq(date, s, (r, e)));
     }
 
     #[test]
