@@ -7,7 +7,6 @@ use nom::multi::many0_count;
 use nom::sequence::{preceded, tuple};
 use nom::IResult;
 use rust_decimal::Decimal;
-use std::borrow::Cow;
 use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq)]
@@ -196,18 +195,6 @@ fn decimal(input: &str) -> IResult<&str, &str> {
         opt(one_of("+-")),
         unsigned_decimal,
     )))(input)
-}
-
-fn amount_dollar(input: &str) -> IResult<&str, Amount> {
-    map_res(
-        recognize(
-            tuple((
-                alt((tag("-$"), tag("$"))),
-                unsigned_decimal
-            )),
-        ),
-        Amount::dollar
-    )(input)
 }
 
 fn is_unit_char(c: char) -> bool {
