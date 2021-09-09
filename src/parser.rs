@@ -232,10 +232,17 @@ fn cost(input: &str) -> IResult<&str, Amount> {
     )(input)
 }
 
+fn posting_indent(input: &str) -> IResult<&str, &str> {
+    preceded(
+        alt((tag("  "), tag("\t"))),
+        space0
+    )(input)
+}
+
 pub fn posting(input: &str) -> IResult<&str, RawPosting> {
     map(
         tuple((
-                space1,
+                posting_indent,
                 account,
                 space0,
                 opt(amount_unit),
