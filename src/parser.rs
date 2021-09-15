@@ -33,7 +33,7 @@ pub enum Status {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TransHeader<'a> {
+pub struct TransactionHeader<'a> {
     date: NaiveDate,
     edate: Option<NaiveDate>,
     status: Status,
@@ -150,7 +150,7 @@ fn comment(input: &str) -> IResult<&str, &str> {
     )(input)
 }
 
-pub fn transaction_header(input: &str) -> IResult<&str, TransHeader> {
+pub fn transaction_header(input: &str) -> IResult<&str, TransactionHeader> {
     map(
         tuple((
             date,
@@ -162,7 +162,7 @@ pub fn transaction_header(input: &str) -> IResult<&str, TransHeader> {
             opt(comment),
             opt(char('\n'))
         )),
-        |(date, edate, status, code, _, desc, comment, _)| TransHeader {
+        |(date, edate, status, code, _, desc, comment, _)| TransactionHeader {
             date: date,
             edate: edate,
             status: status.unwrap_or(Status::Uncleared),
@@ -298,7 +298,7 @@ mod test {
             transaction_header("2020-11-30 * Withdraw\n    "),
             Ok((
                 "    ",
-                TransHeader {
+                TransactionHeader {
                     date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Cleared,
@@ -312,7 +312,7 @@ mod test {
             transaction_header("2020-11-30 ! Withdraw   \n"),
             Ok((
                 "",
-                TransHeader {
+                TransactionHeader {
                     date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Pending,
@@ -326,7 +326,7 @@ mod test {
             transaction_header("2020-11-30 Withdraw ; comment\n"),
             Ok((
                 "",
-                TransHeader {
+                TransactionHeader {
                     date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Uncleared,
@@ -344,7 +344,7 @@ mod test {
             transaction_header("2020-11-30=2020-12-14 * Withdraw"),
             Ok((
                 "",
-                TransHeader {
+                TransactionHeader {
                     date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: Some(NaiveDate::from_ymd(2020, 12, 14)),
                     status: Status::Cleared,
@@ -362,7 +362,7 @@ mod test {
             transaction_header("2020-11-30 * (#100) Withdraw"),
             Ok((
                 "",
-                TransHeader {
+                TransactionHeader {
                     date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: None,
                     status: Status::Cleared,
@@ -380,7 +380,7 @@ mod test {
             transaction_header("2020-11-30=2020-12-11 * (#100) Withdraw ; modified\n    Assets"),
             Ok((
                 "    Assets",
-                TransHeader {
+                TransactionHeader {
                     date: NaiveDate::from_ymd(2020, 11, 30),
                     edate: Some(NaiveDate::from_ymd(2020, 12, 11)),
                     status: Status::Cleared,
