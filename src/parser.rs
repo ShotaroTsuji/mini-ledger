@@ -62,7 +62,7 @@ impl<'a> Amount<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RawPosting<'a> {
+pub struct Posting<'a> {
     account: &'a str,
     amount: Option<Amount<'a>>,
     assign: Option<Amount<'a>>,
@@ -239,7 +239,7 @@ fn posting_indent(input: &str) -> IResult<&str, &str> {
     )(input)
 }
 
-pub fn posting(input: &str) -> IResult<&str, RawPosting> {
+pub fn posting(input: &str) -> IResult<&str, Posting> {
     map(
         tuple((
                 posting_indent,
@@ -254,7 +254,7 @@ pub fn posting(input: &str) -> IResult<&str, RawPosting> {
                 opt(comment),
                 opt(char('\n'))
         )),
-        |(_, account, _, amount, _, assign, _, cost, _, comment, _)| RawPosting {
+        |(_, account, _, amount, _, assign, _, cost, _, comment, _)| Posting {
             account: account,
             amount: amount,
             assign: assign,
@@ -439,7 +439,7 @@ mod test {
             posting("    Assets:Cash 100.05 EUR\n"),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Assets:Cash",
                     amount: Some(Amount::from_str("100.05", "EUR").unwrap()),
                     assign: None,
@@ -452,7 +452,7 @@ mod test {
             posting("    Assets:Cash 3000 JPY   "),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Assets:Cash",
                     amount: Some(Amount::from_str("3000", "JPY").unwrap()),
                     assign: None,
@@ -465,7 +465,7 @@ mod test {
             posting("    Liabilities:CreditCard -3000 JPY ; comment"),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Liabilities:CreditCard",
                     amount: Some(Amount::from_str("-3000", "JPY").unwrap()),
                     assign: None,
@@ -482,7 +482,7 @@ mod test {
             posting("    Assets:Cash    500 JPY = 3000 JPY\n"),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Assets:Cash",
                     amount: Some(Amount::from_str("500", "JPY").unwrap()),
                     assign: Some(Amount::from_str("3000", "JPY").unwrap()),
@@ -495,7 +495,7 @@ mod test {
             posting("    Assets:Cash    =0 ; balance the cash\n"),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Assets:Cash",
                     amount: None,
                     assign: Some(Amount::from_str("0", "").unwrap()),
@@ -512,7 +512,7 @@ mod test {
             posting("    Assets:ETF     1 VTI @ 12300 JPY\n"),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Assets:ETF",
                     amount: Some(Amount::from_str("1", "VTI").unwrap()),
                     assign: None,
@@ -529,7 +529,7 @@ mod test {
             posting("    Assets:Cash"),
             Ok((
                 "",
-                RawPosting {
+                Posting {
                     account: "Assets:Cash",
                     amount: None,
                     assign: None,
