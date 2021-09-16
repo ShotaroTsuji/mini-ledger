@@ -599,4 +599,50 @@ mod test {
             }))
         );
     }
+
+    #[test]
+    fn parse_transaction_with_three_postings() {
+        let s = r#"2021-09-20 * Tomod's
+    費用:食費           500 JPY
+    費用:消耗品費       1000 JPY
+    資産:現金
+"#;
+        assert_eq!(
+            transaction(s),
+            Ok(("", Transaction {
+                header: TransactionHeader {
+                    date: NaiveDate::from_ymd(2021, 9, 20),
+                    edate: None,
+                    status: Status::Cleared,
+                    code: None,
+                    description: "Tomod's",
+                    comment: None,
+                },
+                posting: vec![
+                    Posting {
+                        account: "費用:食費",
+                        amount: Amount::from_str("500", "JPY").ok(),
+                        assign: None,
+                        cost: None,
+                        comment: None,
+                    },
+                    Posting {
+                        account: "費用:消耗品費",
+                        amount: Amount::from_str("1000", "JPY").ok(),
+                        assign: None,
+                        cost: None,
+                        comment: None,
+                    },
+                    Posting {
+                        account: "資産:現金",
+                        amount: None,
+                        assign: None,
+                        cost: None,
+                        comment: None,
+                    },
+                ],
+            }))
+        );
+    }
+
 }
