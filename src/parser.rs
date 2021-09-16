@@ -1,9 +1,9 @@
 use chrono::NaiveDate;
 use nom::branch::alt;
 use nom::bytes::complete::{take_while, take_until, take_while1, tag};
-use nom::character::complete::{char, digit1, none_of, one_of, space0, space1};
+use nom::character::complete::{char, digit1, one_of, space0, space1};
 use nom::combinator::{map, map_res, opt, recognize};
-use nom::multi::many0_count;
+use nom::multi::{many0_count, many1};
 use nom::sequence::{preceded, tuple};
 use nom::IResult;
 use rust_decimal::Decimal;
@@ -23,6 +23,12 @@ pub enum ParseError {
     MissingAccount,
     #[error("Duplicate unit")]
     DupUnit,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Transaction<'a> {
+    header: TransactionHeader<'a>,
+    posting: Vec<Posting<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -260,6 +266,19 @@ pub fn posting(input: &str) -> IResult<&str, Posting> {
             assign: assign,
             cost: cost,
             comment: comment,
+        }
+    )(input)
+}
+
+pub fn transaction(input: &str) -> IResult<&str, Transaction> {
+    map(
+        tuple((
+            transaction_header,
+            many1(posting),
+        )),
+        |(header, posting)| Transaction {
+            header: header,
+            posting: posting,
         }
     )(input)
 }
@@ -543,5 +562,41 @@ mod test {
     #[test]
     fn parse_posting_without_indent() {
         assert!(posting("Assets:Cash").is_err());
+    }
+
+    #[test]
+    fn parse_normal_transaction() {
+        let s = r#"2021-09-16 * 引き出し
+    資産:現金           1000 JPY
+    資産:普通預金:JP    -1000 JPY"#;
+        assert_eq!(
+            transaction(s),
+            Ok(("", Transaction {
+                header: TransactionHeader {
+                    date: NaiveDate::from_ymd(2021, 9, 16),
+                    edate: None,
+                    status: Status::Cleared,
+                    code: None,
+                    description: "引き出し",
+                    comment: None,
+                },
+                posting: vec![
+                    Posting {
+                        account: "資産:現金",
+                        amount: Amount::from_str("1000", "JPY").ok(),
+                        assign: None,
+                        cost: None,
+                        comment: None,
+                    },
+                    Posting {
+                        account: "資産:普通預金:JP",
+                        amount: Amount::from_str("-1000", "JPY").ok(),
+                        assign: None,
+                        cost: None,
+                        comment: None,
+                    },
+                ],
+            }))
+        );
     }
 }
