@@ -358,7 +358,7 @@ mod test {
     }
 
     #[test]
-    fn parse_transaction_with_edate() {
+    fn parse_transaction_header_with_edate() {
         assert_eq!(
             transaction_header("2020-11-30=2020-12-14 * Withdraw"),
             Ok((
@@ -376,7 +376,7 @@ mod test {
     }
 
     #[test]
-    fn parse_transaction_with_code() {
+    fn parse_transaction_header_with_code() {
         assert_eq!(
             transaction_header("2020-11-30 * (#100) Withdraw"),
             Ok((
@@ -394,7 +394,7 @@ mod test {
     }
 
     #[test]
-    fn parse_transaction_with_full_options() {
+    fn parse_transaction_header_with_full_options() {
         assert_eq!(
             transaction_header("2020-11-30=2020-12-11 * (#100) Withdraw ; modified\n    Assets"),
             Ok((
@@ -565,7 +565,7 @@ mod test {
     }
 
     #[test]
-    fn parse_normal_transaction() {
+    fn parse_simple_transaction() {
         let s = r#"2021-09-16 * 引き出し
     資産:現金           1000 JPY
     資産:普通預金:JP    -1000 JPY"#;
