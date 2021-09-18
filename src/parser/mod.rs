@@ -7,8 +7,20 @@ use nom::{
     sequence::tuple,
 };
 
+pub enum LedgerItem<'a> {
+    Transaction(transaction::Transaction<'a>),
+}
+
 pub struct LedgerParser<'a> {
     s: &'a str,
+}
+
+impl<'a> Iterator for LedgerParser<'a> {
+    type Item = LedgerItem<'a>;
+
+    fn next(&mut self) -> Option<LedgerItem<'a>> {
+        None
+    }
 }
 
 pub fn blank_line(input: &str) -> IResult<&str, &str> {
