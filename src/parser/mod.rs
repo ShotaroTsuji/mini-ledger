@@ -7,7 +7,7 @@ use nom::{
     sequence::tuple,
 };
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub enum LedgerItem<'a> {
     Transaction(transaction::Transaction<'a>),
     Blank,
